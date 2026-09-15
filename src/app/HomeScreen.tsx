@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useVideoPlayer, VideoView } from "expo-video";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
+    ActivityIndicator,
     Dimensions,
     FlatList,
     Image,
@@ -14,86 +14,105 @@ import {
     TouchableOpacity,
     View,
 } from "react-native";
+import YoutubePlayer from "react-native-youtube-iframe";
+import {
+    endpoints,
+    fetchMovies,
+    fetchMovieTrailer,
+    IMAGE_BASE_URL,
+    ORIGINAL_IMAGE_URL,
+} from "../services/tmdb";
 
 const { width, height } = Dimensions.get("window");
 
-// Movie Interface with Video Details
-interface Movie {
-  id: string;
-  title: string;
-  poster: string;
-  description: string;
-  videoUrl: string;
-  isTop10?: boolean;
-}
-
-const CATEGORIES: { title: string; data: Movie[] }[] = [
-  {
-    title: "Trending Now",
-    data: [
-      {
-        id: "1",
-        title: "Cyber Runner",
-        poster: "https://picsum.photos/300/450?random=1",
-        description:
-          "A rogue hacker uncovers a dark corporate secret in a futuristic metropolis.",
-        videoUrl:
-          "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
-      },
-      {
-        id: "2",
-        title: "Deep Space",
-        poster: "https://picsum.photos/300/450?random=2",
-        description:
-          "Astronauts stranded on an uncharted moon face an ancient alien threat.",
-        videoUrl:
-          "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4",
-      },
-    ],
-  },
-  {
-    title: "Top 10 Picks for You",
-    data: [
-      {
-        id: "3",
-        title: "Shadow Realm",
-        poster: "https://picsum.photos/300/450?random=3",
-        description:
-          "A warrior navigates parallel dimensions to rescue his lost guild.",
-        videoUrl:
-          "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
-        isTop10: true,
-      },
-    ],
-  },
-];
-
-// Reusable Video Component for Modal
-function VideoPlayer({ videoUrl }: { videoUrl: string }) {
-  const player = useVideoPlayer(videoUrl, (player) => {
-    player.loop = true;
-    player.play();
-  });
-
-  return (
-    <VideoView
-      style={styles.modalVideo}
-      player={player}
-      allowsFullscreen
-      allowsPictureInPicture
-    />
-  );
-}
-
 export default function HomeScreen() {
-  const [selectedMovie, setSelectedMovie] = useState<Movie | null>(null);
+  const [heroMovie, setHeroMovie] = useState<any>(null);
+  const [trending, setTrending] = useState([]);
+  const [topRated, setTopRated] = useState([]);
+  const [action, setAction] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  // Modal & Preview State
+  const [selectedMovie, setSelectedMovie] = useState<any>(null);
+  const [trailerKey, setTrailerKey] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function loadData() {
+      const [trendingData, topRatedData, actionData] = await Promise.all([
+        fetchMovies(endpoints.trending),
+        fetchMovies(endpoints.topRated),
+        fetchMovies(endpoints.action),
+      ]);
+
+      setTrending(trendingData);
+      setTopRated(topRatedData);
+      setAction(actionData);
+
+      if (trendingData.length > 0) {
+        setHeroMovie(
+          trendingData[Math.floor(Math.random() * trendingData.length)],
+        );
+      }
+
+      setLoading(false);
+    }
+
+    loadData();
+  }, []);
+
+  // Fetch YouTube Key dynamically on movie tap
+  const handleSelectMovie = async (movie: any) => {
+    setSelectedMovie(movie);
+    setTrailerKey(null); // Reset key while fetching
+    const key = await fetchMovieTrailer(movie.id);
+    setTrailerKey(key);
+  };
+
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#E50914" />
+      </View>
+    );
+  }
+
+  const CATEGORIES = [
+    { title: "Trending Now", data: trending },
+    { title: "Top Rated", data: topRated },
+    { title: "Action Thrillers", data: action },
+  ];
 
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#000000" />
-
-      {/* Main Movie List Feed */}
       <ScrollView showsVerticalScrollIndicator={false}>
+        {/* Dynamic Hero Banner */}
+        {heroMovie && (
+          <View style={styles.heroContainer}>
+            <Image
+              source={{
+                uri: `${ORIGINAL_IMAGE_URL}${heroMovie.backdrop_path || heroMovie.poster_path}`,
+              }}
+              style={styles.heroImage}
+            />
+            <View style={styles.heroContent}>
+              <Text style={styles.heroTitle}>
+                {heroMovie.title || heroMovie.name}
+              </Text>
+              <View style={styles.heroButtonsRow}>
+                <TouchableOpacity
+                  style={styles.playButton}
+                  onPress={() => handleSelectMovie(heroMovie)}
+                >
+                  <Ionicons name="play" size={22} color="#000000" />
+                  <Text style={styles.playText}>Play</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        )}
+
+        {/* Dynamic Category Rows */}
         {CATEGORIES.map((category) => (
           <View key={category.title} style={styles.categoryContainer}>
             <Text style={styles.categoryTitle}>{category.title}</Text>
@@ -101,25 +120,17 @@ export default function HomeScreen() {
               data={category.data}
               horizontal
               showsHorizontalScrollIndicator={false}
-              keyExtractor={(item) => item.id}
-              contentContainerStyle={{ paddingLeft: 12 }}
-              renderItem={({ item, index }) => (
+              keyExtractor={(item: any) => item.id.toString()}
+              renderItem={({ item }: { item: any }) => (
                 <TouchableOpacity
                   style={styles.cardContainer}
                   activeOpacity={0.8}
-                  onPress={() => setSelectedMovie(item)} // Open Preview Modal
+                  onPress={() => handleSelectMovie(item)}
                 >
                   <Image
-                    source={{ uri: item.poster }}
+                    source={{ uri: `${IMAGE_BASE_URL}${item.poster_path}` }}
                     style={styles.posterImage}
                   />
-                  {item.isTop10 && (
-                    <View style={styles.top10Badge}>
-                      <Text style={styles.top10BadgeText}>
-                        TOP 10 #{index + 1}
-                      </Text>
-                    </View>
-                  )}
                 </TouchableOpacity>
               )}
             />
@@ -127,7 +138,7 @@ export default function HomeScreen() {
         ))}
       </ScrollView>
 
-      {/* --- MOVIE PREVIEW MODAL --- */}
+      {/* --- MOVIE PREVIEW MODAL WITH YOUTUBE TRAILER --- */}
       <Modal
         visible={selectedMovie !== null}
         animationType="slide"
@@ -146,26 +157,46 @@ export default function HomeScreen() {
 
             {selectedMovie && (
               <>
-                {/* Embedded Video Trailer */}
+                {/* YouTube Video Player Embed */}
                 <View style={styles.videoWrapper}>
-                  <VideoPlayer videoUrl={selectedMovie.videoUrl} />
+                  {trailerKey ? (
+                    <YoutubePlayer
+                      height={220}
+                      play={true}
+                      videoId={trailerKey}
+                    />
+                  ) : (
+                    <View style={styles.noTrailerContainer}>
+                      <ActivityIndicator size="small" color="#E50914" />
+                      <Text style={styles.noTrailerText}>
+                        Loading YouTube Trailer...
+                      </Text>
+                    </View>
+                  )}
                 </View>
 
                 {/* Details Section */}
                 <View style={styles.detailsContainer}>
-                  <Text style={styles.modalTitle}>{selectedMovie.title}</Text>
-
-                  <View style={styles.metaRow}>
-                    <Text style={styles.matchText}>98% Match</Text>
-                    <Text style={styles.badgeText}>HD</Text>
-                    <Text style={styles.badgeText}>13+</Text>
-                  </View>
-
-                  <Text style={styles.description}>
-                    {selectedMovie.description}
+                  <Text style={styles.modalTitle}>
+                    {selectedMovie.title || selectedMovie.name}
                   </Text>
 
-                  {/* Play Action Button */}
+                  <View style={styles.metaRow}>
+                    <Text style={styles.matchText}>
+                      {Math.round((selectedMovie.vote_average || 8) * 10)}%
+                      Match
+                    </Text>
+                    <Text style={styles.badgeText}>HD</Text>
+                    <Text style={styles.badgeText}>
+                      {selectedMovie.release_date?.split("-")[0] || "2026"}
+                    </Text>
+                  </View>
+
+                  <Text style={styles.description} numberOfLines={4}>
+                    {selectedMovie.overview ||
+                      "No description available for this title."}
+                  </Text>
+
                   <TouchableOpacity style={styles.fullPlayBtn}>
                     <Ionicons name="play" size={20} color="#000000" />
                     <Text style={styles.fullPlayBtnText}>Watch Full Movie</Text>
@@ -182,7 +213,51 @@ export default function HomeScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#000000" },
-  categoryContainer: { marginTop: 20 },
+  loadingContainer: {
+    flex: 1,
+    backgroundColor: "#000000",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  heroContainer: {
+    height: 450,
+    width: width,
+    position: "relative",
+    marginBottom: 20,
+  },
+  heroImage: { width: "100%", height: "100%", resizeMode: "cover" },
+  heroContent: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    padding: 20,
+    backgroundColor: "rgba(0, 0, 0, 0.6)",
+    alignItems: "center",
+  },
+  heroTitle: {
+    color: "#FFFFFF",
+    fontSize: 28,
+    fontWeight: "900",
+    textAlign: "center",
+    marginBottom: 12,
+  },
+  heroButtonsRow: { flexDirection: "row", justifyContent: "center" },
+  playButton: {
+    backgroundColor: "#FFFFFF",
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 8,
+    paddingHorizontal: 30,
+    borderRadius: 4,
+  },
+  playText: {
+    color: "#000000",
+    fontWeight: "700",
+    fontSize: 16,
+    marginLeft: 6,
+  },
+  categoryContainer: { marginBottom: 20 },
   categoryTitle: {
     color: "#FFFFFF",
     fontSize: 18,
@@ -190,23 +265,13 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     paddingLeft: 16,
   },
-  cardContainer: { marginRight: 10, position: "relative" },
+  cardContainer: { marginRight: 10, marginLeft: 6 },
   posterImage: {
     width: 120,
     height: 180,
     borderRadius: 6,
     backgroundColor: "#1C1C1C",
   },
-  top10Badge: {
-    position: "absolute",
-    top: 6,
-    right: 6,
-    backgroundColor: "#E50914",
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 2,
-  },
-  top10BadgeText: { color: "#FFFFFF", fontSize: 9, fontWeight: "900" },
 
   /* Modal Styling */
   modalOverlay: {
@@ -223,11 +288,16 @@ const styles = StyleSheet.create({
   },
   closeButton: { position: "absolute", top: 12, right: 12, zIndex: 10 },
   videoWrapper: { width: "100%", height: 220, backgroundColor: "#000000" },
-  modalVideo: { width: "100%", height: "100%" },
+  noTrailerContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  noTrailerText: { color: "#AAAAAA", marginTop: 8, fontSize: 12 },
   detailsContainer: { padding: 20 },
   modalTitle: {
     color: "#FFFFFF",
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: "900",
     marginBottom: 8,
   },
