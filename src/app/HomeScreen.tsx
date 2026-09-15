@@ -342,11 +342,16 @@ export default function HomeScreen() {
         transparent={true}
         onRequestClose={() => setShowAuthModal(false)}
       >
-        <View style={styles.authModalOverlay}>
-          <View style={styles.authBox}>
+        <TouchableOpacity
+          style={styles.authModalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowAuthModal(false)}
+        >
+          <TouchableOpacity activeOpacity={1} style={styles.authBox}>
             <TouchableOpacity
               style={styles.authCloseBtn}
               onPress={() => setShowAuthModal(false)}
+              activeOpacity={0.7}
             >
               <Ionicons name="close" size={24} color="#AAAAAA" />
             </TouchableOpacity>
@@ -383,8 +388,8 @@ export default function HomeScreen() {
             >
               <Text style={styles.signInSubmitText}>Sign In</Text>
             </TouchableOpacity>
-          </View>
-        </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
       </Modal>
     </SafeAreaView>
   );
@@ -583,7 +588,14 @@ const styles = StyleSheet.create({
     borderColor: "#333333",
     position: "relative",
   },
-  authCloseBtn: { position: "absolute", top: 16, right: 16 },
+  authCloseBtn: {
+    position: "absolute",
+    top: 16,
+    right: 16,
+    zIndex: 10,
+    padding: 8,
+    cursor: "pointer",
+  } as any,
   authTitle: {
     color: "#FFFFFF",
     fontSize: 24,
