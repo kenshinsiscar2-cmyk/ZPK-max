@@ -22,10 +22,14 @@ const endpoints = {
   topRated: `https://api.themoviedb.org/3/movie/top_rated?api_key=${TMDB_API_KEY}`,
   action: `https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_API_KEY}&with_genres=28`,
   tvShows: `https://api.themoviedb.org/3/tv/popular?api_key=${TMDB_API_KEY}`,
+  kdrama: `https://api.themoviedb.org/3/discover/tv?api_key=${TMDB_API_KEY}&with_original_language=ko&sort_by=popularity.desc`,
+  anime: `https://api.themoviedb.org/3/discover/tv?api_key=${TMDB_API_KEY}&with_genres=16&with_original_language=ja&sort_by=popularity.desc`,
 };
 
 const GENRES = [
   { id: null, name: "All" },
+  { id: "kdrama", name: "KDrama" },
+  { id: "anime", name: "Anime" },
   { id: 28, name: "Action" },
   { id: 35, name: "Comedy" },
   { id: 18, name: "Drama" },
@@ -104,6 +108,8 @@ export default function App() {
   const [topRated, setTopRated] = useState([]);
   const [action, setAction] = useState([]);
   const [tvShows, setTvShows] = useState([]);
+  const [kdramas, setKdramas] = useState([]);
+  const [animes, setAnimes] = useState([]);
   const [loading, setLoading] = useState(true);
 
   // User & Profile States
@@ -126,7 +132,9 @@ export default function App() {
   const [downloads, setDownloads] = useState<any[]>([]);
 
   // Genres & Search
-  const [selectedGenre, setSelectedGenre] = useState<number | null>(null);
+  const [selectedGenre, setSelectedGenre] = useState<number | string | null>(
+    null,
+  );
   const [genreMovies, setGenreMovies] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -152,16 +160,20 @@ export default function App() {
 
   useEffect(() => {
     async function loadData() {
-      const [t, tr, a, tv] = await Promise.all([
+      const [t, tr, a, tv, kd, an] = await Promise.all([
         fetchMovies(endpoints.trending),
         fetchMovies(endpoints.topRated),
         fetchMovies(endpoints.action),
         fetchMovies(endpoints.tvShows),
+        fetchMovies(endpoints.kdrama),
+        fetchMovies(endpoints.anime),
       ]);
       setTrending(t);
       setTopRated(tr);
       setAction(a);
       setTvShows(tv);
+      setKdramas(kd);
+      setAnimes(an);
 
       if (t.length > 0) {
         const valids = t.filter((m: any) => m.backdrop_path || m.poster_path);
@@ -227,7 +239,7 @@ export default function App() {
     const timer = setTimeout(async () => {
       try {
         const res = await axios.get(
-          `https://api.themoviedb.org/3/search/movie?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(
+          `https://api.themoviedb.org/3/search/multi?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(
             searchQuery,
           )}`,
         );
@@ -240,8 +252,8 @@ export default function App() {
             return (b.vote_average || 0) - (a.vote_average || 0);
           if (sortBy === "release")
             return (
-              new Date(b.release_date).getTime() -
-              new Date(a.release_date).getTime()
+              new Date(b.release_date || b.first_air_date).getTime() -
+              new Date(a.release_date || a.first_air_date).getTime()
             );
           return (b.popularity || 0) - (a.popularity || 0);
         });
@@ -291,14 +303,17 @@ export default function App() {
 
     fetchMovieTrailer(movie.id).then((key) => setModalTrailerKey(key));
 
+    const mediaType = movie.title ? "movie" : "tv";
     axios
       .get(
-        `https://api.themoviedb.org/3/movie/${movie.id}/credits?api_key=${TMDB_API_KEY}`,
+        `https://api.themoviedb.org/3/${mediaType}/${movie.id}/credits?api_key=${TMDB_API_KEY}`,
       )
       .then((res) => {
         const crew = res.data.crew || [];
         const castList = res.data.cast || [];
-        const dir = crew.find((m: any) => m.job === "Director");
+        const dir = crew.find(
+          (m: any) => m.job === "Director" || m.job === "Executive Producer",
+        );
         if (dir) setDirector({ id: dir.id, name: dir.name });
         setCast(
           castList.slice(0, 5).map((c: any) => ({ id: c.id, name: c.name })),
@@ -348,19 +363,27 @@ export default function App() {
       }
       alert(`Downloaded ${movie.title || movie.name} for offline view!`);
     } else {
-      alert("Movie already downloaded.");
+      alert("Movie/Show already downloaded.");
     }
   };
 
-  const handleSelectGenre = async (genreId: number | null) => {
+  const handleSelectGenre = async (genreId: number | string | null) => {
     setSelectedGenre(genreId);
     if (!genreId) {
       setGenreMovies([]);
       return;
     }
-    const res = await axios.get(
-      `https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_API_KEY}&with_genres=${genreId}`,
-    );
+
+    let url = "";
+    if (genreId === "kdrama") {
+      url = endpoints.kdrama;
+    } else if (genreId === "anime") {
+      url = endpoints.anime;
+    } else {
+      url = `https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_API_KEY}&with_genres=${genreId}`;
+    }
+
+    const res = await axios.get(url);
     setGenreMovies(res.data.results || []);
   };
 
@@ -423,7 +446,7 @@ export default function App() {
       {isSearching && (
         <View style={styles.searchBarContainer}>
           <TextInput
-            placeholder="Search movies..."
+            placeholder="Search movies, KDrama, Anime..."
             placeholderTextColor="#888"
             style={styles.searchInput}
             value={searchQuery}
@@ -529,7 +552,7 @@ export default function App() {
             </View>
           )}
 
-          {/* MOVIE ROWS */}
+          {/* MOVIE & TV ROWS */}
           <View style={{ paddingBottom: 40 }}>
             {continueWatching.length > 0 && (
               <MovieRow
@@ -546,22 +569,32 @@ export default function App() {
               />
             )}
             <MovieRow
-              title="Trending Now"
+              title="🔥 Trending Now"
               data={trending}
               onSelect={handleSelectMovie}
             />
             <MovieRow
-              title="Popular TV Shows"
+              title="🇰🇷 Popular K-Dramas"
+              data={kdramas}
+              onSelect={handleSelectMovie}
+            />
+            <MovieRow
+              title="⚡ Popular Anime"
+              data={animes}
+              onSelect={handleSelectMovie}
+            />
+            <MovieRow
+              title="📺 Popular TV Shows"
               data={tvShows}
               onSelect={handleSelectMovie}
             />
             <MovieRow
-              title="Top Rated"
+              title="⭐ Top Rated"
               data={topRated}
               onSelect={handleSelectMovie}
             />
             <MovieRow
-              title="Action Thrillers"
+              title="💥 Action Thrillers"
               data={action}
               onSelect={handleSelectMovie}
             />
@@ -614,7 +647,7 @@ export default function App() {
                   <Text
                     style={{ color: "#AAA", fontSize: 12, marginBottom: 4 }}
                   >
-                    Director:{" "}
+                    Director / Creator:{" "}
                     <Text style={{ color: "#FFF" }}>{director.name}</Text>
                   </Text>
                 )}
@@ -980,38 +1013,18 @@ export default function App() {
             <TouchableOpacity
               style={[
                 styles.playButton,
-                { backgroundColor: "#333", marginTop: 15, width: "100%" },
+                {
+                  backgroundColor: "#333",
+                  marginTop: 15,
+                  width: "100%",
+                  justifyContent: "center",
+                },
               ]}
               onPress={handleClearCache}
             >
-              <Text style={{ color: "#FFF", fontWeight: "bold" }}>
-                Clear Watch History
-              </Text>
+              <Text style={{ color: "#FFF" }}>Clear Watch History</Text>
             </TouchableOpacity>
           </View>
-        </View>
-      </Modal>
-
-      {/* VIDEO PLAYER MODAL */}
-      <Modal visible={!!playingMovie} transparent animationType="slide">
-        <View style={styles.playerContainer}>
-          <TouchableOpacity
-            style={styles.closePlayerButton}
-            onPress={() => setPlayingMovie(null)}
-          >
-            <Ionicons name="close" size={28} color="#FFF" />
-          </TouchableOpacity>
-          {playerTrailerKey && typeof window !== "undefined" ? (
-            <iframe
-              src={`https://www.youtube.com/embed/${playerTrailerKey}?autoplay=1`}
-              style={{ width: "100%", height: "80%", border: 0 }}
-              allow="autoplay"
-            />
-          ) : (
-            <Text style={{ color: "#FFF", marginTop: 50 }}>
-              Trailer unavailable for this movie.
-            </Text>
-          )}
         </View>
       </Modal>
     </ScrollView>
@@ -1019,12 +1032,15 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#111" },
+  container: {
+    flex: 1,
+    backgroundColor: "#000",
+  },
   loadingContainer: {
     flex: 1,
-    backgroundColor: "#111",
-    alignItems: "center",
+    backgroundColor: "#000",
     justifyContent: "center",
+    alignItems: "center",
   },
   navbar: {
     flexDirection: "row",
@@ -1035,29 +1051,43 @@ const styles = StyleSheet.create({
     paddingBottom: 10,
     backgroundColor: "rgba(0,0,0,0.8)",
   },
-  logoText: { color: "#E50914", fontSize: 22, fontWeight: "bold" },
-  navIcons: { flexDirection: "row", alignItems: "center" },
+  logoText: {
+    color: "#E50914",
+    fontSize: 22,
+    fontWeight: "bold",
+    letterSpacing: 1,
+  },
+  navIcons: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
   searchBarContainer: {
     flexDirection: "row",
     paddingHorizontal: 15,
-    marginVertical: 10,
-    alignItems: "center",
+    marginBottom: 10,
+    gap: 10,
   },
   searchInput: {
     flex: 1,
-    backgroundColor: "#222",
+    backgroundColor: "#111",
     color: "#FFF",
     paddingHorizontal: 12,
     paddingVertical: 8,
-    borderRadius: 5,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "#333",
   },
   filterButton: {
-    backgroundColor: "#333",
-    padding: 10,
-    borderRadius: 5,
-    marginLeft: 8,
+    backgroundColor: "#222",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 12,
+    borderRadius: 6,
   },
-  genreContainer: { paddingHorizontal: 10, marginVertical: 10 },
+  genreContainer: {
+    paddingHorizontal: 15,
+    marginBottom: 15,
+  },
   genreBadge: {
     backgroundColor: "#222",
     paddingHorizontal: 12,
@@ -1065,18 +1095,24 @@ const styles = StyleSheet.create({
     borderRadius: 15,
     marginRight: 8,
   },
-  activeGenreBadge: { backgroundColor: "#E50914" },
-  genreText: { color: "#FFF", fontSize: 12 },
-  gridContainer: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    padding: 10,
-    gap: 10,
+  activeGenreBadge: {
+    backgroundColor: "#E50914",
   },
-  gridCard: { width: "31%", height: 160 },
-  gridImage: { width: "100%", height: "100%", borderRadius: 5 },
-  heroContainer: { height: 280, width: "100%", position: "relative" },
-  heroImage: { width: "100%", height: "100%" },
+  genreText: {
+    color: "#FFF",
+    fontSize: 12,
+  },
+  heroContainer: {
+    height: 350,
+    width: "100%",
+    position: "relative",
+    backgroundColor: "#111",
+  },
+  heroImage: {
+    width: "100%",
+    height: "100%",
+    resizeMode: "cover",
+  },
   timerBadge: {
     position: "absolute",
     top: 10,
@@ -1086,12 +1122,15 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingHorizontal: 8,
     paddingVertical: 4,
-    borderRadius: 10,
+    borderRadius: 12,
   },
-  timerText: { color: "#FFF", fontSize: 10 },
+  timerText: {
+    color: "#FFF",
+    fontSize: 10,
+  },
   heroOverlay: {
     position: "absolute",
-    bottom: 15,
+    bottom: 20,
     left: 15,
     right: 15,
   },
@@ -1099,49 +1138,76 @@ const styles = StyleSheet.create({
     color: "#FFF",
     fontSize: 22,
     fontWeight: "bold",
-    marginBottom: 8,
-    textShadowColor: "rgba(0, 0, 0, 0.8)",
+    marginBottom: 10,
+    textShadowColor: "rgba(0,0,0,0.8)",
     textShadowRadius: 5,
   },
   playButton: {
-    flexDirection: "row",
     backgroundColor: "#FFF",
+    flexDirection: "row",
+    alignItems: "center",
     paddingHorizontal: 15,
     paddingVertical: 8,
-    borderRadius: 5,
-    alignItems: "center",
+    borderRadius: 4,
     alignSelf: "flex-start",
   },
-  playButtonText: { color: "#000", fontWeight: "bold" },
-  rowContainer: { marginTop: 15, paddingLeft: 15 },
+  playButtonText: {
+    color: "#000",
+    fontWeight: "bold",
+  },
+  rowContainer: {
+    marginTop: 20,
+    paddingLeft: 15,
+  },
   rowTitle: {
     color: "#FFF",
     fontSize: 16,
     fontWeight: "bold",
-    marginBottom: 8,
+    marginBottom: 10,
   },
-  card: { marginRight: 10 },
-  cardImage: { width: 110, height: 160, borderRadius: 5 },
+  card: {
+    marginRight: 10,
+  },
+  cardImage: {
+    width: 110,
+    height: 160,
+    borderRadius: 6,
+  },
+  gridContainer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    paddingHorizontal: 10,
+    gap: 10,
+  },
+  gridCard: {
+    width: "31%",
+  },
+  gridImage: {
+    width: "100%",
+    height: 150,
+    borderRadius: 6,
+  },
   modalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.8)",
+    backgroundColor: "rgba(0,0,0,0.85)",
     justifyContent: "center",
     alignItems: "center",
     padding: 20,
   },
   modalContent: {
-    backgroundColor: "#1A1A1A",
+    backgroundColor: "#181818",
     width: "100%",
+    maxWidth: 400,
     borderRadius: 10,
-    padding: 15,
-    alignItems: "center",
+    padding: 20,
     position: "relative",
+    alignItems: "center",
   },
   closeButton: {
     position: "absolute",
     top: 10,
     right: 10,
-    zIndex: 1,
+    zIndex: 10,
   },
   trailerBox: {
     width: "100%",
@@ -1149,41 +1215,43 @@ const styles = StyleSheet.create({
     backgroundColor: "#000",
     borderRadius: 8,
     overflow: "hidden",
-    marginBottom: 10,
+    marginBottom: 15,
   },
-  modalImage: { width: "100%", height: "100%" },
+  modalImage: {
+    width: "100%",
+    height: "100%",
+    resizeMode: "cover",
+  },
   modalTitle: {
     color: "#FFF",
     fontSize: 18,
     fontWeight: "bold",
     marginBottom: 5,
+    textAlign: "center",
   },
   modalOverview: {
-    color: "#CCC",
+    color: "#AAA",
     fontSize: 12,
-    marginBottom: 10,
+    marginBottom: 15,
     textAlign: "center",
   },
   profileBox: {
     alignItems: "center",
     padding: 10,
     borderRadius: 8,
-    backgroundColor: "#222",
+    borderWidth: 1,
+    borderColor: "#333",
     width: 80,
   },
-  activeProfileBox: { borderColor: "#E50914", borderWidth: 1 },
+  activeProfileBox: {
+    borderColor: "#E50914",
+    backgroundColor: "#222",
+  },
   accountInfoCard: {
     backgroundColor: "#222",
     width: "100%",
     padding: 12,
-    borderRadius: 6,
+    borderRadius: 8,
     marginVertical: 10,
   },
-  playerContainer: {
-    flex: 1,
-    backgroundColor: "#000",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  closePlayerButton: { position: "absolute", top: 40, right: 20, zindex: 2 },
 });
