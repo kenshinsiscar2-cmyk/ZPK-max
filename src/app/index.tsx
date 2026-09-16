@@ -1,9 +1,11 @@
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import axios from "axios";
+import { ResizeMode, Video } from "expo-av";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Dimensions,
   FlatList,
   Image,
@@ -165,6 +167,15 @@ function HomeScreen() {
   const [action, setAction] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  // Auth & Saved User State
+  const [userAccount, setUserAccount] = useState<{ email: string } | null>(
+    null,
+  );
+  const [authModalVisible, setAuthModalVisible] = useState(false);
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [pendingMovieToWatch, setPendingMovieToWatch] = useState<any>(null);
+
   const [myList, setMyList] = useState<any[]>([]);
   const [continueWatching, setContinueWatching] = useState<any[]>([]);
 
@@ -201,9 +212,7 @@ function HomeScreen() {
   const [personMovies, setPersonMovies] = useState<any[]>([]);
   const [personLoading, setPersonLoading] = useState(false);
 
-  const [showAuthModal, setShowAuthModal] = useState(false);
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [playingMovie, setPlayingMovie] = useState<any>(null);
 
   useEffect(() => {
     async function loadData() {
@@ -232,14 +241,78 @@ function HomeScreen() {
 
   const loadStoredData = async () => {
     try {
+      const storedUser = await AsyncStorage.getItem("@zpk_user_account");
       const storedList = await AsyncStorage.getItem("@zpk_mylist");
       const storedContinue = await AsyncStorage.getItem(
         "@zpk_continue_watching",
       );
+
+      if (storedUser) setUserAccount(JSON.parse(storedUser));
       if (storedList) setMyList(JSON.parse(storedList));
       if (storedContinue) setContinueWatching(JSON.parse(storedContinue));
     } catch (e) {
       console.error("Failed to load storage:", e);
+    }
+  };
+
+  const handleSaveAccount = async () => {
+    if (!authEmail.trim() || !authPassword.trim()) {
+      Alert.alert("Error", "Please enter email and password.");
+      return;
+    }
+
+    const userData = { email: authEmail.trim() };
+    setUserAccount(userData);
+    await AsyncStorage.setItem("@zpk_user_account", JSON.stringify(userData));
+
+    setAuthModalVisible(false);
+    setAuthEmail("");
+    setAuthPassword("");
+
+    if (pendingMovieToWatch) {
+      startVideoPlayer(pendingMovieToWatch);
+      setPendingMovieToWatch(null);
+    }
+  };
+
+  const handleStartWatching = (movie: any) => {
+    if (!userAccount) {
+      setPendingMovieToWatch(movie);
+      setAuthModalVisible(true);
+      return;
+    }
+
+    startVideoPlayer(movie);
+  };
+
+  const startVideoPlayer = async (movie: any) => {
+    try {
+      let updated = [...continueWatching];
+      const existingIndex = updated.findIndex((m) => m.id === movie.id);
+
+      const movieItem = {
+        ...movie,
+        progress:
+          existingIndex >= 0
+            ? updated[existingIndex].progress
+            : Math.random() * 0.4 + 0.2,
+      };
+
+      if (existingIndex >= 0) {
+        updated.splice(existingIndex, 1);
+      }
+      updated.unshift(movieItem);
+
+      setContinueWatching(updated);
+      await AsyncStorage.setItem(
+        "@zpk_continue_watching",
+        JSON.stringify(updated),
+      );
+
+      setSelectedMovie(null);
+      setPlayingMovie(movie);
+    } catch (e) {
+      console.error("Failed to update continue watching:", e);
     }
   };
 
@@ -256,35 +329,6 @@ function HomeScreen() {
       await AsyncStorage.setItem("@zpk_mylist", JSON.stringify(updatedList));
     } catch (e) {
       console.error("Failed to update My List:", e);
-    }
-  };
-
-  const handleStartWatching = async (movie: any) => {
-    try {
-      let updated = [...continueWatching];
-      const existingIndex = updated.findIndex((m) => m.id === movie.id);
-
-      const movieItem = {
-        ...movie,
-        progress:
-          existingIndex >= 0
-            ? updated[existingIndex].progress
-            : Math.random() * 0.6 + 0.2,
-      };
-
-      if (existingIndex >= 0) {
-        updated.splice(existingIndex, 1);
-      }
-      updated.unshift(movieItem);
-
-      setContinueWatching(updated);
-      await AsyncStorage.setItem(
-        "@zpk_continue_watching",
-        JSON.stringify(updated),
-      );
-      handleOpenAuthModal();
-    } catch (e) {
-      console.error("Failed to update continue watching:", e);
     }
   };
 
@@ -450,13 +494,6 @@ function HomeScreen() {
     } finally {
       setPersonLoading(false);
     }
-  };
-
-  const handleOpenAuthModal = () => {
-    setSelectedMovie(null);
-    setTimeout(() => {
-      setShowAuthModal(true);
-    }, 200);
   };
 
   if (loading) {
@@ -730,6 +767,7 @@ function HomeScreen() {
         )}
       </View>
 
+      {/* Details & Trailer Modal */}
       <Modal
         visible={selectedMovie !== null}
         animationType="slide"
@@ -905,6 +943,62 @@ function HomeScreen() {
         </Pressable>
       </Modal>
 
+      {/* ONE-TIME SIGN IN / SIGN UP POPUP MODAL */}
+      <Modal
+        visible={authModalVisible}
+        animationType="fade"
+        transparent={true}
+        onRequestClose={() => setAuthModalVisible(false)}
+      >
+        <Pressable
+          style={styles.modalOverlayCenter}
+          onPress={() => setAuthModalVisible(false)}
+        >
+          <Pressable
+            style={styles.authModalCard}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <TouchableOpacity
+              style={styles.closeButtonAuth}
+              onPress={() => setAuthModalVisible(false)}
+            >
+              <Ionicons name="close" size={24} color="#AAAAAA" />
+            </TouchableOpacity>
+
+            <Text style={styles.authTitle}>Sign In to Watch</Text>
+            <Text style={styles.authSubtitle}>
+              Create your account once to stream full movies.
+            </Text>
+
+            <TextInput
+              style={styles.authInput}
+              placeholder="Email address"
+              placeholderTextColor="#777777"
+              value={authEmail}
+              onChangeText={setAuthEmail}
+              autoCapitalize="none"
+              keyboardType="email-address"
+            />
+            <TextInput
+              style={styles.authInput}
+              placeholder="Password"
+              placeholderTextColor="#777777"
+              value={authPassword}
+              onChangeText={setAuthPassword}
+              secureTextEntry
+            />
+
+            <TouchableOpacity
+              style={styles.authSubmitBtn}
+              onPress={handleSaveAccount}
+            >
+              <Text style={styles.authSubmitText}>Sign In & Continue</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Cast / Crew Modal */}
       <Modal
         visible={personModalVisible}
         animationType="slide"
@@ -960,63 +1054,46 @@ function HomeScreen() {
         </Pressable>
       </Modal>
 
+      {/* Full Video Player Modal */}
       <Modal
-        visible={showAuthModal}
+        visible={playingMovie !== null}
         animationType="fade"
-        transparent={true}
-        onRequestClose={() => setShowAuthModal(false)}
+        supportedOrientations={["landscape", "portrait"]}
+        onRequestClose={() => setPlayingMovie(null)}
       >
-        <Pressable
-          style={styles.authModalOverlay}
-          onPress={() => setShowAuthModal(false)}
-        >
-          <Pressable
-            style={styles.authBox}
-            onPress={(e) => e.stopPropagation()}
+        <View style={styles.fullPlayerContainer}>
+          <TouchableOpacity
+            style={styles.fullPlayerCloseBtn}
+            onPress={() => setPlayingMovie(null)}
+            activeOpacity={0.8}
           >
-            <TouchableOpacity
-              style={styles.authCloseBtn}
-              onPress={() => setShowAuthModal(false)}
-              activeOpacity={0.7}
-            >
-              <Ionicons name="close" size={24} color="#AAAAAA" />
-            </TouchableOpacity>
+            <Ionicons name="close" size={30} color="#FFFFFF" />
+          </TouchableOpacity>
 
-            <Text style={styles.authTitle}>Sign In Required</Text>
-            <Text style={styles.authSubtitle}>
-              Sign in to your ZPK-MAX account to stream full movies and TV
-              shows.
-            </Text>
-
-            <TextInput
-              style={styles.authInput}
-              placeholder="Email or phone number"
-              placeholderTextColor="#8C8C8C"
-              value={email}
-              onChangeText={setEmail}
-            />
-
-            <TextInput
-              style={styles.authInput}
-              placeholder="Password"
-              placeholderTextColor="#8C8C8C"
-              secureTextEntry
-              value={password}
-              onChangeText={setPassword}
-            />
-
-            <TouchableOpacity
-              style={styles.signInSubmitBtn}
-              onPress={() => {
-                setShowAuthModal(false);
-                alert("Welcome back!");
+          {playingMovie && (
+            <View
+              style={{
+                width: "100%",
+                height: "100%",
+                justifyContent: "center",
               }}
-              activeOpacity={0.8}
             >
-              <Text style={styles.signInSubmitText}>Sign In</Text>
-            </TouchableOpacity>
-          </Pressable>
-        </Pressable>
+              <Text style={styles.playingTitleText} numberOfLines={1}>
+                Playing: {playingMovie.title || playingMovie.name}
+              </Text>
+              <Video
+                style={{ width: "100%", height: 260 }}
+                source={{
+                  uri: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
+                }}
+                useNativeControls
+                resizeMode={ResizeMode.CONTAIN}
+                shouldPlay
+                isLooping
+              />
+            </View>
+          )}
+        </View>
       </Modal>
     </SafeAreaView>
   );
@@ -1210,16 +1287,24 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.85)",
     justifyContent: "flex-end",
     zIndex: 1000,
-    elevation: 10,
+  },
+  modalOverlayCenter: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.85)",
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 1000,
   },
   modalContent: {
     height: height * 0.82,
+    width: "100%",
     backgroundColor: "#181818",
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,
     overflow: "hidden",
   },
   closeButton: { position: "absolute", top: 12, right: 12, zIndex: 99 },
+  closeButtonAuth: { position: "absolute", top: 12, right: 12, zIndex: 99 },
   videoWrapper: { width: "100%", height: 220, backgroundColor: "#000000" },
   noTrailerContainer: {
     flex: 1,
@@ -1332,66 +1417,61 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     marginBottom: 10,
   },
-  authModalOverlay: {
+  fullPlayerContainer: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.85)",
+    backgroundColor: "#000000",
     justifyContent: "center",
     alignItems: "center",
-    padding: 20,
-    zIndex: 9999,
-    elevation: 20,
   },
-  authBox: {
-    width: "100%",
-    maxWidth: 380,
-    backgroundColor: "#141414",
-    borderRadius: 8,
-    padding: 24,
-    borderWidth: 1,
-    borderColor: "#333333",
-    position: "relative",
-    elevation: 5,
-  },
-  authCloseBtn: {
+  fullPlayerCloseBtn: {
     position: "absolute",
-    top: 16,
-    right: 16,
-    zIndex: 10,
+    top: 40,
+    right: 20,
+    zIndex: 999,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    borderRadius: 20,
     padding: 6,
+  },
+  playingTitleText: {
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontWeight: "800",
+    textAlign: "center",
+    marginBottom: 12,
+  },
+
+  authModalCard: {
+    width: "85%",
+    backgroundColor: "#222222",
+    borderRadius: 12,
+    padding: 20,
+    elevation: 10,
+    position: "relative",
   },
   authTitle: {
     color: "#FFFFFF",
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: "900",
-    marginBottom: 6,
+    marginBottom: 4,
   },
-  authSubtitle: {
-    color: "#AAAAAA",
-    fontSize: 13,
-    marginBottom: 18,
-    lineHeight: 18,
-  },
+  authSubtitle: { color: "#888888", fontSize: 12, marginBottom: 16 },
   authInput: {
-    backgroundColor: "#262626",
+    backgroundColor: "#333333",
     color: "#FFFFFF",
-    borderRadius: 4,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    borderRadius: 6,
+    paddingHorizontal: 12,
+    height: 44,
+    marginBottom: 12,
     fontSize: 14,
-    marginBottom: 14,
-    borderWidth: 1,
-    borderColor: "#333333",
   },
-  signInSubmitBtn: {
+  authSubmitBtn: {
     backgroundColor: "#E50914",
-    borderRadius: 4,
+    borderRadius: 6,
     paddingVertical: 12,
     alignItems: "center",
-    marginTop: 6,
-    marginBottom: 12,
+    marginTop: 4,
   },
-  signInSubmitText: { color: "#FFFFFF", fontSize: 15, fontWeight: "800" },
+  authSubmitText: { color: "#FFFFFF", fontWeight: "800", fontSize: 14 },
 });
 
-// SIGURADUHING NAKA-EXPORT ITO NANG HIWALAY SA DULO
 export default HomeScreen;
