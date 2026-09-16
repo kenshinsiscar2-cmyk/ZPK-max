@@ -21,6 +21,7 @@ const endpoints = {
   trending: `https://api.themoviedb.org/3/trending/movie/week?api_key=${TMDB_API_KEY}`,
   topRated: `https://api.themoviedb.org/3/movie/top_rated?api_key=${TMDB_API_KEY}`,
   action: `https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_API_KEY}&with_genres=28`,
+  tvShows: `https://api.themoviedb.org/3/tv/popular?api_key=${TMDB_API_KEY}`,
 };
 
 const GENRES = [
@@ -56,6 +57,42 @@ const fetchMovieTrailer = async (id: number) => {
   }
 };
 
+// Sub-component para sa mga rows
+const MovieRow = ({
+  title,
+  data,
+  onSelect,
+}: {
+  title: string;
+  data: any[];
+  onSelect: (movie: any) => void;
+}) => {
+  if (!data || data.length === 0) return null;
+  return (
+    <View style={styles.rowContainer}>
+      <Text style={styles.rowTitle}>{title}</Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+        {data.map((movie) => (
+          <TouchableOpacity
+            key={movie.id}
+            onPress={() => onSelect(movie)}
+            style={styles.card}
+          >
+            <Image
+              source={{
+                uri: movie.poster_path
+                  ? `${IMAGE_BASE_URL}${movie.poster_path}`
+                  : "https://via.placeholder.com/150",
+              }}
+              style={styles.cardImage}
+            />
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+    </View>
+  );
+};
+
 export default function App() {
   const [heroIndex, setHeroIndex] = useState(0);
   const [heroMovies, setHeroMovies] = useState<any[]>([]);
@@ -66,6 +103,7 @@ export default function App() {
   const [trending, setTrending] = useState([]);
   const [topRated, setTopRated] = useState([]);
   const [action, setAction] = useState([]);
+  const [tvShows, setTvShows] = useState([]);
   const [loading, setLoading] = useState(true);
 
   // User & Profile States
@@ -85,6 +123,7 @@ export default function App() {
   // Collections
   const [myList, setMyList] = useState<any[]>([]);
   const [continueWatching, setContinueWatching] = useState<any[]>([]);
+  const [downloads, setDownloads] = useState<any[]>([]);
 
   // Genres & Search
   const [selectedGenre, setSelectedGenre] = useState<number | null>(null);
@@ -93,11 +132,12 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<any[]>([]);
 
-  // Sorting
+  // Sorting & Filtering
   const [filterModalVisible, setFilterModalVisible] = useState(false);
   const [sortBy, setSortBy] = useState<"popularity" | "rating" | "release">(
     "popularity",
   );
+  const [minRating, setMinRating] = useState<number>(0);
 
   // Modals & Details
   const [selectedMovie, setSelectedMovie] = useState<any>(null);
@@ -107,17 +147,21 @@ export default function App() {
   );
   const [cast, setCast] = useState<{ id: number; name: string }[]>([]);
   const [playingMovie, setPlayingMovie] = useState<any>(null);
+  const [playerTrailerKey, setPlayerTrailerKey] = useState<string | null>(null);
+  const [downloadModalVisible, setDownloadModalVisible] = useState(false);
 
   useEffect(() => {
     async function loadData() {
-      const [t, tr, a] = await Promise.all([
+      const [t, tr, a, tv] = await Promise.all([
         fetchMovies(endpoints.trending),
         fetchMovies(endpoints.topRated),
         fetchMovies(endpoints.action),
+        fetchMovies(endpoints.tvShows),
       ]);
       setTrending(t);
       setTopRated(tr);
       setAction(a);
+      setTvShows(tv);
 
       if (t.length > 0) {
         const valids = t.filter((m: any) => m.backdrop_path || m.poster_path);
@@ -166,10 +210,12 @@ export default function App() {
     const user = localStorage.getItem("@zpk_user_account");
     const list = localStorage.getItem("@zpk_mylist");
     const cw = localStorage.getItem("@zpk_continue_watching");
+    const dl = localStorage.getItem("@zpk_downloads");
 
     if (user) setUserAccount(JSON.parse(user));
     if (list) setMyList(JSON.parse(list));
     if (cw) setContinueWatching(JSON.parse(cw));
+    if (dl) setDownloads(JSON.parse(dl));
   };
 
   // SEARCH & SORT HANDLER
@@ -185,7 +231,9 @@ export default function App() {
             searchQuery,
           )}`,
         );
-        let results = res.data.results.filter((m: any) => m.poster_path);
+        let results = res.data.results.filter(
+          (m: any) => m.poster_path && (m.vote_average || 0) >= minRating,
+        );
 
         results.sort((a: any, b: any) => {
           if (sortBy === "rating")
@@ -204,7 +252,7 @@ export default function App() {
       }
     }, 400);
     return () => clearTimeout(timer);
-  }, [searchQuery, sortBy]);
+  }, [searchQuery, sortBy, minRating]);
 
   const handleSaveAccount = () => {
     if (!authEmail.trim()) return;
@@ -274,6 +322,7 @@ export default function App() {
     }
     setSelectedMovie(null);
     setPlayingMovie(movie);
+    fetchMovieTrailer(movie.id).then((key) => setPlayerTrailerKey(key));
   };
 
   const toggleMyList = (movie: any) => {
@@ -286,6 +335,20 @@ export default function App() {
     setMyList(updated);
     if (typeof window !== "undefined") {
       localStorage.setItem("@zpk_mylist", JSON.stringify(updated));
+    }
+  };
+
+  const handleDownload = (movie: any) => {
+    let updated = [...downloads];
+    if (!updated.some((m) => m.id === movie.id)) {
+      updated.push(movie);
+      setDownloads(updated);
+      if (typeof window !== "undefined") {
+        localStorage.setItem("@zpk_downloads", JSON.stringify(updated));
+      }
+      alert(`Downloaded ${movie.title || movie.name} for offline view!`);
+    } else {
+      alert("Movie already downloaded.");
     }
   };
 
@@ -319,6 +382,14 @@ export default function App() {
           <TouchableOpacity onPress={() => setIsSearching(!isSearching)}>
             <Ionicons
               name="search"
+              size={22}
+              color="#FFF"
+              style={{ marginRight: 15 }}
+            />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => setDownloadModalVisible(true)}>
+            <Ionicons
+              name="download-outline"
               size={22}
               color="#FFF"
               style={{ marginRight: 15 }}
@@ -480,6 +551,11 @@ export default function App() {
               onSelect={handleSelectMovie}
             />
             <MovieRow
+              title="Popular TV Shows"
+              data={tvShows}
+              onSelect={handleSelectMovie}
+            />
+            <MovieRow
               title="Top Rated"
               data={topRated}
               onSelect={handleSelectMovie}
@@ -524,7 +600,9 @@ export default function App() {
                   )}
                 </View>
 
-                <Text style={styles.modalTitle}>{selectedMovie.title}</Text>
+                <Text style={styles.modalTitle}>
+                  {selectedMovie.title || selectedMovie.name}
+                </Text>
                 <Text style={{ color: "#FFD700", marginBottom: 5 }}>
                   ⭐ {selectedMovie.vote_average?.toFixed(1)}
                 </Text>
@@ -570,8 +648,62 @@ export default function App() {
                       color="#FFF"
                     />
                   </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.playButton, { backgroundColor: "#333" }]}
+                    onPress={() => handleDownload(selectedMovie)}
+                  >
+                    <Ionicons name="download-outline" size={18} color="#FFF" />
+                  </TouchableOpacity>
                 </View>
               </>
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* DOWNLOADS MODAL */}
+      <Modal visible={downloadModalVisible} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <TouchableOpacity
+              style={styles.closeButton}
+              onPress={() => setDownloadModalVisible(false)}
+            >
+              <Ionicons name="close" size={24} color="#FFF" />
+            </TouchableOpacity>
+            <Text style={styles.modalTitle}>Offline Downloads</Text>
+            {downloads.length === 0 ? (
+              <Text style={{ color: "#AAA", marginVertical: 20 }}>
+                No downloaded titles yet.
+              </Text>
+            ) : (
+              <ScrollView
+                style={{ width: "100%", maxHeight: 250, marginVertical: 10 }}
+              >
+                {downloads.map((item) => (
+                  <View
+                    key={item.id}
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      marginVertical: 5,
+                      backgroundColor: "#222",
+                      padding: 8,
+                      borderRadius: 5,
+                    }}
+                  >
+                    <Ionicons
+                      name="film-outline"
+                      size={20}
+                      color="#E50914"
+                      style={{ marginRight: 10 }}
+                    />
+                    <Text style={{ color: "#FFF", fontSize: 14, flex: 1 }}>
+                      {item.title || item.name}
+                    </Text>
+                  </View>
+                ))}
+              </ScrollView>
             )}
           </View>
         </View>
@@ -581,8 +713,18 @@ export default function App() {
       <Modal visible={filterModalVisible} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Sort Movies</Text>
-            <View style={{ flexDirection: "row", gap: 5, marginVertical: 15 }}>
+            <Text style={styles.modalTitle}>Sort & Filter Movies</Text>
+            <Text
+              style={{
+                color: "#AAA",
+                fontSize: 12,
+                marginTop: 10,
+                alignSelf: "flex-start",
+              }}
+            >
+              Sort By:
+            </Text>
+            <View style={{ flexDirection: "row", gap: 5, marginVertical: 10 }}>
               {(["popularity", "rating", "release"] as const).map((option) => (
                 <TouchableOpacity
                   key={option}
@@ -596,8 +738,36 @@ export default function App() {
                 </TouchableOpacity>
               ))}
             </View>
+
+            <Text
+              style={{
+                color: "#AAA",
+                fontSize: 12,
+                marginTop: 10,
+                alignSelf: "flex-start",
+              }}
+            >
+              Minimum Rating:
+            </Text>
+            <View style={{ flexDirection: "row", gap: 5, marginVertical: 10 }}>
+              {[0, 5, 7, 8].map((rating) => (
+                <TouchableOpacity
+                  key={rating}
+                  onPress={() => setMinRating(rating)}
+                  style={[
+                    styles.genreBadge,
+                    minRating === rating && styles.activeGenreBadge,
+                  ]}
+                >
+                  <Text style={{ color: "#FFF", fontSize: 12 }}>
+                    {rating}+ ⭐
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
             <TouchableOpacity
-              style={styles.playButton}
+              style={[styles.playButton, { marginTop: 15 }]}
               onPress={() => setFilterModalVisible(false)}
             >
               <Text style={styles.playButtonText}>Done</Text>
@@ -755,7 +925,7 @@ export default function App() {
                 {
                   backgroundColor: "#E50914",
                   width: "100%",
-                  justify: "center",
+                  justifyContent: "center",
                   marginTop: 10,
                 },
               ]}
@@ -786,13 +956,36 @@ export default function App() {
               <Ionicons name="close" size={24} color="#FFF" />
             </TouchableOpacity>
             <Text style={styles.modalTitle}>Settings</Text>
-            <Text style={{ color: "#AAA", marginTop: 10 }}>
-              Video Quality: {videoQuality}
+
+            <Text
+              style={{ color: "#AAA", marginTop: 15, alignSelf: "flex-start" }}
+            >
+              Video Streaming Quality:
             </Text>
+            <View style={{ flexDirection: "row", gap: 8, marginVertical: 10 }}>
+              {["Auto", "720p", "1080p", "4K"].map((q) => (
+                <TouchableOpacity
+                  key={q}
+                  onPress={() => setVideoQuality(q)}
+                  style={[
+                    styles.genreBadge,
+                    videoQuality === q && styles.activeGenreBadge,
+                  ]}
+                >
+                  <Text style={{ color: "#FFF", fontSize: 12 }}>{q}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
             <TouchableOpacity
               style={[
                 styles.playButton,
-                { backgroundColor: "#333", marginTop: 15 },
+                {
+                  backgroundColor: "#333",
+                  marginTop: 15,
+                  width: "100%",
+                  justifyContent: "center",
+                },
               ]}
               onPress={handleClearCache}
             >
@@ -804,22 +997,29 @@ export default function App() {
         </View>
       </Modal>
 
-      {/* FULLSCREEN PLAYER */}
+      {/* FULLSCREEN PLAYER MODAL */}
       {playingMovie && (
-        <Modal visible={true} animationType="fade">
-          <View style={styles.playerContainer}>
+        <Modal visible={true} animationType="fade" statusBarHidden>
+          <View style={styles.fullPlayerContainer}>
             <TouchableOpacity
-              style={styles.closePlayerButton}
+              style={styles.playerCloseButton}
               onPress={() => setPlayingMovie(null)}
             >
-              <Ionicons name="close" size={30} color="#FFF" />
+              <Ionicons name="arrow-back" size={28} color="#FFF" />
             </TouchableOpacity>
-            {typeof window !== "undefined" && (
+            {playerTrailerKey && typeof window !== "undefined" ? (
               <iframe
-                src={`https://vidsrc.to/embed/movie/${playingMovie.id}`}
+                src={`https://www.youtube.com/embed/${playerTrailerKey}?autoplay=1&controls=1`}
                 style={{ width: "100%", height: "100%", border: 0 }}
-                allowFullScreen
+                allow="autoplay; encrypted-media"
               />
+            ) : (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color="#E50914" />
+                <Text style={{ color: "#FFF", marginTop: 10 }}>
+                  Loading Player...
+                </Text>
+              </View>
             )}
           </View>
         </Modal>
@@ -827,22 +1027,6 @@ export default function App() {
     </ScrollView>
   );
 }
-
-const MovieRow = ({ title, data, onSelect }: any) => (
-  <View style={{ marginTop: 20, paddingLeft: 15 }}>
-    <Text style={styles.rowTitle}>{title}</Text>
-    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-      {data.map((movie: any) => (
-        <TouchableOpacity key={movie.id} onPress={() => onSelect(movie)}>
-          <Image
-            source={{ uri: `${IMAGE_BASE_URL}${movie.poster_path}` }}
-            style={styles.cardImage}
-          />
-        </TouchableOpacity>
-      ))}
-    </ScrollView>
-  </View>
-);
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#141414" },
@@ -856,143 +1040,159 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    padding: 15,
-    backgroundColor: "#000",
+    paddingHorizontal: 15,
+    paddingTop: 40,
+    paddingBottom: 10,
   },
   logoText: { color: "#E50914", fontSize: 22, fontWeight: "bold" },
   navIcons: { flexDirection: "row", alignItems: "center" },
   searchBarContainer: {
     flexDirection: "row",
-    padding: 10,
-    backgroundColor: "#222",
-    alignItems: "center",
+    paddingHorizontal: 15,
+    marginBottom: 10,
   },
   searchInput: {
     flex: 1,
     backgroundColor: "#333",
     color: "#FFF",
-    padding: 8,
-    borderRadius: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 6,
   },
-  filterButton: { marginLeft: 10, padding: 8 },
-  genreContainer: { paddingVertical: 10, paddingLeft: 15 },
-  genreBadge: {
+  filterButton: {
     backgroundColor: "#333",
-    paddingHorizontal: 15,
+    padding: 10,
+    borderRadius: 6,
+    marginLeft: 8,
+    justifyContent: "center",
+  },
+  genreContainer: { paddingHorizontal: 10, marginBottom: 15 },
+  genreBadge: {
+    backgroundColor: "#222",
+    paddingHorizontal: 14,
     paddingVertical: 6,
     borderRadius: 20,
     marginRight: 8,
   },
   activeGenreBadge: { backgroundColor: "#E50914" },
-  genreText: { color: "#FFF", fontSize: 12, fontWeight: "600" },
-  heroContainer: {
-    height: 350,
-    width: "100%",
-    position: "relative",
-    backgroundColor: "#000",
-  },
+  genreText: { color: "#FFF", fontSize: 13, fontWeight: "600" },
+  heroContainer: { height: 350, width: "100%", position: "relative" },
   heroImage: { width: "100%", height: "100%" },
-  heroOverlay: { position: "absolute", bottom: 20, left: 15, zIndex: 10 },
+  timerBadge: {
+    position: "absolute",
+    top: 10,
+    right: 10,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  timerText: { color: "#FFF", fontSize: 11 },
+  heroOverlay: {
+    position: "absolute",
+    bottom: 20,
+    left: 15,
+    right: 15,
+  },
   heroTitle: {
     color: "#FFF",
     fontSize: 24,
     fontWeight: "bold",
     marginBottom: 10,
+    textShadowColor: "rgba(0,0,0,0.8)",
+    textShadowRadius: 4,
   },
-  timerBadge: {
-    position: "absolute",
-    top: 15,
-    right: 15,
-    backgroundColor: "rgba(0,0,0,0.7)",
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 15,
-    flexDirection: "row",
-    alignItems: "center",
-    zIndex: 10,
-  },
-  timerText: { color: "#FFF", fontSize: 11, fontWeight: "bold" },
   playButton: {
+    backgroundColor: "#FFF",
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#FFF",
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     paddingVertical: 8,
-    borderRadius: 5,
+    borderRadius: 4,
+    alignSelf: "flex-start",
   },
   playButtonText: { color: "#000", fontWeight: "bold" },
+  gridContainer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    paddingHorizontal: 10,
+  },
+  gridCard: { width: "33.33%", padding: 5 },
+  gridImage: { width: "100%", height: 160, borderRadius: 4 },
+  rowContainer: { marginTop: 15, paddingLeft: 15 },
   rowTitle: {
     color: "#FFF",
     fontSize: 16,
     fontWeight: "bold",
-    marginBottom: 10,
+    marginBottom: 8,
   },
-  cardImage: { width: 120, height: 170, borderRadius: 5, marginRight: 10 },
-  gridContainer: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    padding: 10,
-    justifyContent: "space-between",
-  },
-  gridCard: { width: "30%", marginBottom: 15 },
-  gridImage: { width: "100%", height: 160, borderRadius: 5 },
+  card: { marginRight: 10 },
+  cardImage: { width: 110, height: 160, borderRadius: 4 },
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.85)",
     justifyContent: "center",
     alignItems: "center",
+    padding: 20,
   },
   modalContent: {
-    backgroundColor: "#181818",
-    width: "90%",
-    maxWidth: 480,
-    padding: 20,
+    backgroundColor: "#1F1F1F",
     borderRadius: 10,
+    padding: 20,
+    width: "100%",
+    maxWidth: 400,
     alignItems: "center",
+    position: "relative",
   },
+  closeButton: { position: "absolute", top: 10, right: 10, zIndex: 10 },
   trailerBox: {
     width: "100%",
+    height: 200,
     borderRadius: 8,
     overflow: "hidden",
     marginBottom: 15,
-    alignItems: "center",
+    backgroundColor: "#000",
   },
-  modalImage: { width: 140, height: 200, borderRadius: 5 },
+  modalImage: { width: "100%", height: "100%" },
   modalTitle: {
     color: "#FFF",
     fontSize: 18,
     fontWeight: "bold",
     marginBottom: 5,
+    textAlign: "center",
   },
   modalOverview: {
-    color: "#AAA",
-    fontSize: 12,
+    color: "#CCC",
+    fontSize: 13,
+    marginBottom: 10,
     textAlign: "center",
-    marginBottom: 15,
   },
-  closeButton: { position: "absolute", top: 10, right: 10, zIndex: 20 },
-  playerContainer: { flex: 1, backgroundColor: "#000" },
-  closePlayerButton: { position: "absolute", top: 20, right: 20, zIndex: 999 },
-
-  // ADDED ACCOUNT STYLES
   profileBox: {
-    alignItems: "center",
     padding: 10,
     borderRadius: 8,
-    borderWidth: 2,
-    borderColor: "transparent",
-    backgroundColor: "#222",
+    borderWidth: 1,
+    borderColor: "#333",
+    alignItems: "center",
     width: 80,
   },
-  activeProfileBox: {
-    borderColor: "#E50914",
-    backgroundColor: "#2A2A2A",
-  },
+  activeProfileBox: { borderColor: "#E50914" },
   accountInfoCard: {
-    backgroundColor: "#222",
+    backgroundColor: "#2A2A2A",
     width: "100%",
     padding: 12,
-    borderRadius: 8,
+    borderRadius: 6,
     marginVertical: 10,
+  },
+  fullPlayerContainer: { flex: 1, backgroundColor: "#000" },
+  playerCloseButton: {
+    position: "absolute",
+    top: 20,
+    left: 20,
+    zIndex: 99,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    padding: 8,
+    borderRadius: 20,
   },
 });
