@@ -980,16 +980,11 @@ export default function App() {
             <TouchableOpacity
               style={[
                 styles.playButton,
-                {
-                  backgroundColor: "#333",
-                  marginTop: 15,
-                  width: "100%",
-                  justifyContent: "center",
-                },
+                { backgroundColor: "#333", marginTop: 15, width: "100%" },
               ]}
               onPress={handleClearCache}
             >
-              <Text style={{ color: "#FF3B30", fontWeight: "bold" }}>
+              <Text style={{ color: "#FFF", fontWeight: "bold" }}>
                 Clear Watch History
               </Text>
             </TouchableOpacity>
@@ -997,44 +992,39 @@ export default function App() {
         </View>
       </Modal>
 
-      {/* FULLSCREEN PLAYER MODAL */}
-      {playingMovie && (
-        <Modal visible={true} animationType="fade" statusBarHidden>
-          <View style={styles.fullPlayerContainer}>
-            <TouchableOpacity
-              style={styles.playerCloseButton}
-              onPress={() => setPlayingMovie(null)}
-            >
-              <Ionicons name="arrow-back" size={28} color="#FFF" />
-            </TouchableOpacity>
-            {playerTrailerKey && typeof window !== "undefined" ? (
-              <iframe
-                src={`https://www.youtube.com/embed/${playerTrailerKey}?autoplay=1&controls=1`}
-                style={{ width: "100%", height: "100%", border: 0 }}
-                allow="autoplay; encrypted-media"
-              />
-            ) : (
-              <View style={styles.loadingContainer}>
-                <ActivityIndicator size="large" color="#E50914" />
-                <Text style={{ color: "#FFF", marginTop: 10 }}>
-                  Loading Player...
-                </Text>
-              </View>
-            )}
-          </View>
-        </Modal>
-      )}
+      {/* VIDEO PLAYER MODAL */}
+      <Modal visible={!!playingMovie} transparent animationType="slide">
+        <View style={styles.playerContainer}>
+          <TouchableOpacity
+            style={styles.closePlayerButton}
+            onPress={() => setPlayingMovie(null)}
+          >
+            <Ionicons name="close" size={28} color="#FFF" />
+          </TouchableOpacity>
+          {playerTrailerKey && typeof window !== "undefined" ? (
+            <iframe
+              src={`https://www.youtube.com/embed/${playerTrailerKey}?autoplay=1`}
+              style={{ width: "100%", height: "80%", border: 0 }}
+              allow="autoplay"
+            />
+          ) : (
+            <Text style={{ color: "#FFF", marginTop: 50 }}>
+              Trailer unavailable for this movie.
+            </Text>
+          )}
+        </View>
+      </Modal>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#141414" },
+  container: { flex: 1, backgroundColor: "#111" },
   loadingContainer: {
     flex: 1,
-    backgroundColor: "#141414",
-    justifyContent: "center",
+    backgroundColor: "#111",
     alignItems: "center",
+    justifyContent: "center",
   },
   navbar: {
     flexDirection: "row",
@@ -1043,84 +1033,86 @@ const styles = StyleSheet.create({
     paddingHorizontal: 15,
     paddingTop: 40,
     paddingBottom: 10,
+    backgroundColor: "rgba(0,0,0,0.8)",
   },
   logoText: { color: "#E50914", fontSize: 22, fontWeight: "bold" },
   navIcons: { flexDirection: "row", alignItems: "center" },
   searchBarContainer: {
     flexDirection: "row",
     paddingHorizontal: 15,
-    marginBottom: 10,
+    marginVertical: 10,
+    alignItems: "center",
   },
   searchInput: {
     flex: 1,
-    backgroundColor: "#333",
+    backgroundColor: "#222",
     color: "#FFF",
     paddingHorizontal: 12,
     paddingVertical: 8,
-    borderRadius: 6,
+    borderRadius: 5,
   },
   filterButton: {
     backgroundColor: "#333",
     padding: 10,
-    borderRadius: 6,
+    borderRadius: 5,
     marginLeft: 8,
-    justifyContent: "center",
   },
-  genreContainer: { paddingHorizontal: 10, marginBottom: 15 },
+  genreContainer: { paddingHorizontal: 10, marginVertical: 10 },
   genreBadge: {
     backgroundColor: "#222",
-    paddingHorizontal: 14,
+    paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: 20,
+    borderRadius: 15,
     marginRight: 8,
   },
   activeGenreBadge: { backgroundColor: "#E50914" },
-  genreText: { color: "#FFF", fontSize: 13, fontWeight: "600" },
-  heroContainer: { height: 350, width: "100%", position: "relative" },
+  genreText: { color: "#FFF", fontSize: 12 },
+  gridContainer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    padding: 10,
+    gap: 10,
+  },
+  gridCard: { width: "31%", height: 160 },
+  gridImage: { width: "100%", height: "100%", borderRadius: 5 },
+  heroContainer: { height: 280, width: "100%", position: "relative" },
   heroImage: { width: "100%", height: "100%" },
   timerBadge: {
     position: "absolute",
     top: 10,
     right: 10,
     backgroundColor: "rgba(0,0,0,0.6)",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
     flexDirection: "row",
     alignItems: "center",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 10,
   },
-  timerText: { color: "#FFF", fontSize: 11 },
+  timerText: { color: "#FFF", fontSize: 10 },
   heroOverlay: {
     position: "absolute",
-    bottom: 20,
+    bottom: 15,
     left: 15,
     right: 15,
   },
   heroTitle: {
     color: "#FFF",
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: "bold",
-    marginBottom: 10,
-    textShadowColor: "rgba(0,0,0,0.8)",
-    textShadowRadius: 4,
+    marginBottom: 8,
+    textShadowColor: "rgba(0, 0, 0, 0.8)",
+    textShadowRadius: 5,
   },
   playButton: {
-    backgroundColor: "#FFF",
     flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 16,
+    backgroundColor: "#FFF",
+    paddingHorizontal: 15,
     paddingVertical: 8,
-    borderRadius: 4,
+    borderRadius: 5,
+    alignItems: "center",
     alignSelf: "flex-start",
   },
   playButtonText: { color: "#000", fontWeight: "bold" },
-  gridContainer: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    paddingHorizontal: 10,
-  },
-  gridCard: { width: "33.33%", padding: 5 },
-  gridImage: { width: "100%", height: 160, borderRadius: 4 },
   rowContainer: { marginTop: 15, paddingLeft: 15 },
   rowTitle: {
     color: "#FFF",
@@ -1129,31 +1121,35 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   card: { marginRight: 10 },
-  cardImage: { width: 110, height: 160, borderRadius: 4 },
+  cardImage: { width: 110, height: 160, borderRadius: 5 },
   modalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.85)",
+    backgroundColor: "rgba(0,0,0,0.8)",
     justifyContent: "center",
     alignItems: "center",
     padding: 20,
   },
   modalContent: {
-    backgroundColor: "#1F1F1F",
-    borderRadius: 10,
-    padding: 20,
+    backgroundColor: "#1A1A1A",
     width: "100%",
-    maxWidth: 400,
+    borderRadius: 10,
+    padding: 15,
     alignItems: "center",
     position: "relative",
   },
-  closeButton: { position: "absolute", top: 10, right: 10, zIndex: 10 },
+  closeButton: {
+    position: "absolute",
+    top: 10,
+    right: 10,
+    zIndex: 1,
+  },
   trailerBox: {
     width: "100%",
     height: 200,
+    backgroundColor: "#000",
     borderRadius: 8,
     overflow: "hidden",
-    marginBottom: 15,
-    backgroundColor: "#000",
+    marginBottom: 10,
   },
   modalImage: { width: "100%", height: "100%" },
   modalTitle: {
@@ -1161,38 +1157,33 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "bold",
     marginBottom: 5,
-    textAlign: "center",
   },
   modalOverview: {
     color: "#CCC",
-    fontSize: 13,
+    fontSize: 12,
     marginBottom: 10,
     textAlign: "center",
   },
   profileBox: {
+    alignItems: "center",
     padding: 10,
     borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#333",
-    alignItems: "center",
+    backgroundColor: "#222",
     width: 80,
   },
-  activeProfileBox: { borderColor: "#E50914" },
+  activeProfileBox: { borderColor: "#E50914", borderWidth: 1 },
   accountInfoCard: {
-    backgroundColor: "#2A2A2A",
+    backgroundColor: "#222",
     width: "100%",
     padding: 12,
     borderRadius: 6,
     marginVertical: 10,
   },
-  fullPlayerContainer: { flex: 1, backgroundColor: "#000" },
-  playerCloseButton: {
-    position: "absolute",
-    top: 20,
-    left: 20,
-    zIndex: 99,
-    backgroundColor: "rgba(0,0,0,0.5)",
-    padding: 8,
-    borderRadius: 20,
+  playerContainer: {
+    flex: 1,
+    backgroundColor: "#000",
+    justifyContent: "center",
+    alignItems: "center",
   },
+  closePlayerButton: { position: "absolute", top: 40, right: 20, zindex: 2 },
 });
