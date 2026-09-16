@@ -3,29 +3,29 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import axios from "axios";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
-    ActivityIndicator,
-    Dimensions,
-    FlatList,
-    Image,
-    Modal,
-    Platform,
-    Pressable,
-    SafeAreaView,
-    ScrollView,
-    StatusBar,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Dimensions,
+  FlatList,
+  Image,
+  Modal,
+  Platform,
+  Pressable,
+  SafeAreaView,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import YoutubePlayer from "react-native-youtube-iframe";
 import {
-    endpoints,
-    fetchMovies,
-    fetchMovieTrailer,
-    IMAGE_BASE_URL,
-    ORIGINAL_IMAGE_URL,
+  endpoints,
+  fetchMovies,
+  fetchMovieTrailer,
+  IMAGE_BASE_URL,
+  ORIGINAL_IMAGE_URL,
 } from "../services/tmdb";
 
 const { width, height } = Dimensions.get("window");
